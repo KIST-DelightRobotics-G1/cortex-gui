@@ -1,10 +1,12 @@
-// KIST G1 display renderer — vanilla, buildless.
+// KIST G1 display renderer — thought flow. Vanilla, buildless, ROS-free.
 //
-// Consumes the workstation GUIBackground WebSocket (REQ-41 / kist-drl-g1-workstation):
-//   - binary message : latest camera JPEG bytes
-//   - text message   : status JSON { scenario, subtask:{name,i,n}, state }
-// Keeps the latest frame + latest status independently and redraws on each
-// animation frame. ROS-free. Auto-reconnects with exponential backoff.
+// WebSocket input (cortex gui_bridge_node, SYS-REQ-41):
+//   text  {"scenario","subtask":{name,i,n}|null,"state"}       legacy status (still honoured)
+//   text  {"type":"event","t","plan_id","kind","index","title","body"}   thought-flow event
+//   binary                                                        latest camera JPEG
+//
+// Events are folded into one view-model (reduce) and the DOM is patched from it.
+// The status message only fills gaps (idle / count) — events carry the story.
 
 (function () {
   "use strict";
@@ -13,204 +15,167 @@
     (window.GUI_CONFIG && window.GUI_CONFIG.wsUrl) ||
     "ws://" + (location.hostname || "localhost") + ":8081";
 
-  var canvas = document.getElementById("view");
-  var ctx = canvas.getContext("2d");
-
-  var latestFrame = null; // ImageBitmap | null
-  var latestStatus = null; // status object | null
-  var connState = "connecting"; // connecting | connected | reconnecting
-
-  var STATE_COLOR = {
-    idle: "#888888",
-    active: "#2d7dff",
-    success: "#2ecc71",
-    failed: "#e74c3c",
+  var $ = function (id) { return document.getElementById(id); };
+  var el = {
+    wrap: $("wrap"), heard: $("heard"), planLab: $("planLab"), steps: $("steps"), reply: $("reply"),
+    say: $("say"), obs: $("obs"), bar: $("bar"), stepNo: $("stepNo"), elapsed: $("elapsed"),
+    cam: $("cam"), view: $("view"), live: $("live"),
   };
+  var ctx = el.view.getContext("2d");
 
-  // ---- canvas sizing (HiDPI-crisp) ----
-  function resize() {
-    var dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.floor(window.innerWidth * dpr);
-    canvas.height = Math.floor(window.innerHeight * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // draw in CSS pixels
+  // ---- view-model ----
+  var vm = fresh();
+  function fresh() {
+    return {
+      mode: "idle",          // idle | planning | running | reply | done | failed | stopped
+      planId: "", heard: "", thinking: false, count: -1,
+      steps: [],             // [{index, title, status: pending|run|done|failed}]
+      cur: -1, say: "", obs: "", reply: null, stepT0: 0,
+    };
   }
-  window.addEventListener("resize", resize);
-  resize();
 
-  // Click / tap toggles fullscreen (Fullscreen API requires a user gesture,
-  // so auto-fullscreen on load is not possible; for the wall display launch
-  // the browser in kiosk mode instead). Esc exits, as usual.
-  canvas.addEventListener("click", function () {
-    if (document.fullscreenElement) {
-      if (document.exitFullscreen) document.exitFullscreen();
-    } else {
-      var el = document.documentElement;
-      var req = el.requestFullscreen || el.webkitRequestFullscreen;
-      if (req) req.call(el);
+  function reduce(ev) {
+    var k = ev.kind, i = ev.index;
+    switch (k) {
+      case "HEARD":
+        if (ev.body === "stop") { vm.obs = "“" + ev.title + "”"; return; }
+        vm = fresh();
+        vm.mode = "planning"; vm.planId = ev.plan_id; vm.heard = ev.title; vm.thinking = true;
+        vm.say = "생각하는 중"; vm.stepT0 = performance.now();
+        return;
+      case "THINKING": vm.thinking = true; return;
+      case "PLAN_LINE":
+        if (ev.plan_id !== vm.planId) { vm = fresh(); vm.planId = ev.plan_id; vm.mode = "planning"; }
+        vm.steps[i] = { index: i, title: ev.title, status: "pending" };
+        return;
+      case "PLAN_END": vm.thinking = false; vm.count = i; return;
+      case "REPLY":
+        vm.thinking = false; vm.mode = "reply"; vm.reply = { kind: ev.body, say: ev.title };
+        vm.say = ev.title; return;
+      case "STEP_START":
+        vm.mode = "running"; vm.cur = i; vm.say = ev.title; vm.obs = ""; vm.stepT0 = performance.now();
+        if (vm.steps[i]) vm.steps[i].status = "run";
+        return;
+      case "STEP_DONE": if (vm.steps[i]) vm.steps[i].status = "done"; return;
+      case "STEP_FAILED":
+        if (vm.steps[i]) vm.steps[i].status = "failed";
+        vm.mode = "failed"; vm.obs = ev.title; return;
+      case "GROUND": vm.obs = ev.title; return;
+      case "CANCEL":
+        vm.thinking = false; vm.obs = ev.title;
+        if (vm.mode !== "failed") vm.mode = "stopped";
+        if (vm.steps[vm.cur] && vm.steps[vm.cur].status === "run") vm.steps[vm.cur].status = "failed";
+        return;
+      case "PLAN_DONE": vm.mode = "done"; vm.say = "완료"; vm.obs = ""; return;
+      case "NOTE": vm.obs = ev.title; return;
     }
-  });
+  }
 
-  // ---- WebSocket with exponential-backoff reconnect ----
+  // Legacy status: only used to fall back to idle when no plan is active.
+  function applyStatus(s) {
+    if (s.state === "idle" && (vm.mode === "done" || vm.mode === "failed" || vm.mode === "stopped")) {
+      // keep the finished plan on screen; nothing to do
+    }
+    if (s.state === "idle" && vm.mode === "idle") render();
+  }
+
+  // ---- DOM ----
+  var lastKey = "";
+  function render() {
+    var key = JSON.stringify(vm);
+    if (key === lastKey) return;
+    lastKey = key;
+
+    el.wrap.dataset.mode = vm.mode;
+    el.heard.textContent = vm.heard || "듣고 있습니다";
+    el.heard.classList.toggle("quote", !!vm.heard);
+
+    // plan spine
+    var frag = document.createDocumentFragment();
+    vm.steps.forEach(function (s) {
+      if (!s) return;
+      var li = document.createElement("li");
+      li.className = "st " + s.status;
+      var dot = document.createElement("div"); dot.className = "dot";
+      dot.textContent = s.status === "done" ? "✓" : s.status === "failed" ? "✕" : String(s.index + 1);
+      var tx = document.createElement("div"); tx.className = "tx"; tx.textContent = s.title;
+      li.appendChild(dot); li.appendChild(tx); frag.appendChild(li);
+    });
+    if (vm.thinking) {
+      var li = document.createElement("li"); li.className = "st think";
+      li.innerHTML = '<div class="dot">·</div><div class="tx">생각하는 중…</div>';
+      frag.appendChild(li);
+    }
+    el.steps.replaceChildren(frag);
+    el.planLab.textContent = vm.count >= 0 ? "Plan · " + vm.count : vm.thinking ? "Plan" : vm.steps.length ? "Plan" : "";
+    el.planLab.hidden = !vm.steps.length && !vm.thinking && !vm.reply;
+
+    // reply bubble replaces the plan
+    if (vm.reply) {
+      el.reply.hidden = false; el.reply.dataset.kind = vm.reply.kind; el.reply.textContent = vm.reply.say;
+    } else { el.reply.hidden = true; }
+
+    // now
+    el.say.textContent = vm.say || "대기 중";
+    el.obs.hidden = !vm.obs; el.obs.lastElementChild.textContent = vm.obs;
+    var n = vm.count >= 0 ? vm.count : vm.steps.length;
+    var done = vm.steps.filter(function (s) { return s && s.status === "done"; }).length;
+    el.bar.style.width = n ? Math.round((done / n) * 100) + "%" : "0";
+    el.stepNo.textContent = vm.cur >= 0 && n ? "STEP " + (vm.cur + 1) + " / " + n : "";
+  }
+
+  function tickClock() {
+    var show = vm.mode === "running" || vm.mode === "planning";
+    el.elapsed.textContent = show ? ((performance.now() - vm.stepT0) / 1000).toFixed(1) + " s" : "";
+  }
+
+  // ---- camera ----
+  var latestFrame = null, hasFrame = false;
+  function drawFrame() {
+    if (!latestFrame) return;
+    var box = el.view.parentElement;
+    var dpr = window.devicePixelRatio || 1;
+    var W = box.clientWidth, H = box.clientHeight;
+    if (el.view.width !== Math.floor(W * dpr)) { el.view.width = Math.floor(W * dpr); el.view.height = Math.floor(H * dpr); }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var s = Math.max(W / latestFrame.width, H / latestFrame.height);
+    var dw = latestFrame.width * s, dh = latestFrame.height * s;
+    ctx.drawImage(latestFrame, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    if (!hasFrame) { hasFrame = true; el.cam.classList.add("has-frame"); }
+  }
+
+  // ---- websocket ----
   var backoff = 500;
+  function setConn(state, label) { el.live.dataset.conn = state; el.live.lastElementChild.textContent = label; }
   function connect() {
     var ws;
-    try {
-      ws = new WebSocket(WS_URL);
-    } catch (e) {
-      scheduleReconnect();
-      return;
-    }
+    try { ws = new WebSocket(WS_URL); } catch (e) { scheduleReconnect(); return; }
     ws.binaryType = "blob";
-    ws.onopen = function () {
-      connState = "connected";
-      backoff = 500;
-    };
-    ws.onmessage = function (ev) {
-      if (typeof ev.data === "string") {
-        try {
-          latestStatus = JSON.parse(ev.data);
-        } catch (e) {
-          /* ignore malformed status */
-        }
+    ws.onopen = function () { setConn("connected", "LIVE"); backoff = 500; };
+    ws.onmessage = function (e) {
+      if (typeof e.data === "string") {
+        var m; try { m = JSON.parse(e.data); } catch (err) { return; }
+        if (m && m.type === "event") { reduce(m); render(); }
+        else if (m) applyStatus(m);
       } else {
-        createImageBitmap(ev.data)
-          .then(function (bmp) {
-            if (latestFrame && latestFrame.close) latestFrame.close();
-            latestFrame = bmp;
-          })
-          .catch(function () {
-            /* undecodable frame — keep previous */
-          });
+        createImageBitmap(e.data).then(function (bmp) {
+          if (latestFrame && latestFrame.close) latestFrame.close();
+          latestFrame = bmp; drawFrame();
+        }).catch(function () {});
       }
     };
-    ws.onerror = function () {
-      try {
-        ws.close();
-      } catch (e) {}
-    };
-    ws.onclose = function () {
-      connState = "reconnecting";
-      scheduleReconnect();
-    };
+    ws.onerror = function () { try { ws.close(); } catch (e) {} };
+    ws.onclose = function () { setConn("reconnecting", "RECONNECTING"); scheduleReconnect(); };
   }
-  function scheduleReconnect() {
-    setTimeout(connect, backoff);
-    backoff = Math.min(backoff * 2, 5000);
-  }
+  function scheduleReconnect() { setTimeout(connect, backoff); backoff = Math.min(backoff * 2, 5000); }
   connect();
 
-  // ---- drawing helpers (work in CSS pixels) ----
-  function cssW() {
-    return window.innerWidth;
-  }
-  function cssH() {
-    return window.innerHeight;
-  }
-
-  function drawCover(bmp) {
-    var W = cssW(),
-      H = cssH();
-    var s = Math.max(W / bmp.width, H / bmp.height);
-    var dw = bmp.width * s,
-      dh = bmp.height * s;
-    ctx.drawImage(bmp, (W - dw) / 2, (H - dh) / 2, dw, dh);
-  }
-
-  // Dark pill behind text. Returns nothing; caller manages the y cursor.
-  function panel(text, x, y, align, font, fg) {
-    ctx.font = font || "22px system-ui, sans-serif";
-    ctx.textBaseline = "alphabetic";
-    var m = ctx.measureText(text);
-    var padX = 12,
-      boxH = 32,
-      boxY = y - 24;
-    var boxX = align === "right" ? x - m.width - padX * 2 : x;
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(boxX, boxY, m.width + padX * 2, boxH);
-    ctx.fillStyle = fg || "#ffffff";
-    ctx.textAlign = "left";
-    ctx.fillText(text, boxX + padX, y);
-  }
-
-  function badge(text, x, y, color) {
-    ctx.font = "bold 20px system-ui, sans-serif";
-    var m = ctx.measureText(text);
-    var padX = 12,
-      h = 30;
-    ctx.fillStyle = color;
-    ctx.fillRect(x, y - 22, m.width + padX * 2, h);
-    ctx.fillStyle = "#ffffff";
-    ctx.textAlign = "left";
-    ctx.fillText(text, x + padX, y);
-  }
-
-  function drawOverlay(s) {
-    var pad = 24;
-
-    // top-left: scenario + sub-task + state badge
-    var y = pad + 28;
-    if (s.scenario) {
-      panel(s.scenario, pad, y, "left", "bold 28px system-ui, sans-serif");
-      y += 44;
-    }
-    if (s.subtask) {
-      var st = s.subtask;
-      var label = st.name + "  (" + ((st.i | 0) + 1) + "/" + (st.n | 0) + ")";
-      panel(label, pad, y, "left", "22px system-ui, sans-serif");
-      y += 40;
-    }
-    var state = s.state || "idle";
-    badge(state.toUpperCase(), pad, y, STATE_COLOR[state] || "#888888");
-  }
-
-  function drawConn() {
-    var W = cssW(),
-      H = cssH(),
-      pad = 16;
-    var map = {
-      connected: ["#2ecc71", "LIVE"],
-      connecting: ["#f1c40f", "CONNECTING"],
-      reconnecting: ["#e67e22", "RECONNECTING"],
-    };
-    var c = map[connState] || map.connecting;
-    ctx.font = "16px system-ui, sans-serif";
-    var m = ctx.measureText(c[1]);
-    var padX = 10,
-      h = 26,
-      w = m.width + padX * 2 + 22;
-    var bx = W - pad - w,
-      by = H - pad - h;
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(bx, by, w, h);
-    ctx.fillStyle = c[0];
-    ctx.beginPath();
-    ctx.arc(bx + 14, by + h / 2, 6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#ffffff";
-    ctx.textAlign = "left";
-    ctx.fillText(c[1], bx + 26, by + 18);
-  }
-
-  // ---- render loop ----
-  function render() {
-    var W = cssW(),
-      H = cssH();
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, W, H);
-
-    if (latestFrame) {
-      drawCover(latestFrame);
-    } else {
-      ctx.fillStyle = "#3a3f47";
-      ctx.font = "bold 40px system-ui, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("NO SIGNAL", W / 2, H / 2);
-    }
-
-    if (latestStatus) drawOverlay(latestStatus);
-    drawConn();
-
-    requestAnimationFrame(render);
-  }
-  requestAnimationFrame(render);
+  // Click / tap toggles fullscreen (needs a user gesture; use kiosk mode for the wall).
+  document.body.addEventListener("click", function () {
+    if (document.fullscreenElement) { if (document.exitFullscreen) document.exitFullscreen(); }
+    else { var r = document.documentElement.requestFullscreen; if (r) r.call(document.documentElement); }
+  });
+  window.addEventListener("resize", drawFrame);
+  setInterval(tickClock, 100);
+  render();
 })();
