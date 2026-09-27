@@ -7,6 +7,7 @@
   --bg: #121212; --surface: #1A1A1A; --fg: #E8E8E8; --muted: #9A9A9A;
   --line: #2E2E2E; --chip: #202020; --rule: #555555;
   --danger: #B3261E; --caution: #8A6100;
+  --ease: cubic-bezier(.22, .61, .36, 1);
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
@@ -39,6 +40,17 @@ html, body {
 
 /* ---- left: heard + plan spine ---- */
 .heard { margin-bottom: 4rem; }
+.heard .lab { display: inline-flex; align-items: center; gap: .9rem; }
+/* 대기 화면이 정지 화면처럼 보이지 않게. 음량계가 아니라 "켜져 있다" 는 표시다. */
+.ear { display: inline-flex; align-items: flex-end; gap: .22rem; height: .9rem; }
+.ear b { width: .18rem; height: .28rem; border-radius: .09rem; background: var(--muted);
+  animation: ear 1.7s ease-in-out infinite; }
+.ear b:nth-child(2) { animation-delay: .28s; }
+.ear b:nth-child(3) { animation-delay: .56s; }
+/* display 를 끄면 애니메이션이 취소되고 다시 켜도 살아나지 않는다. 흐리게만 한다.
+   실행 중에도 로봇은 듣고 있다 (선점·중지 발화를 받는다). */
+.ear { transition: opacity .4s var(--ease); }
+.wrap[data-mode="planning"] .ear, .wrap[data-mode="running"] .ear { opacity: .3; }
 .heard .q {
   margin-top: 1rem; font-size: 3rem; font-weight: 500; letter-spacing: -.02em; line-height: 1.25;
   text-wrap: balance;
@@ -55,15 +67,18 @@ html, body {
 .st {
   position: relative; display: grid; grid-template-columns: 2.5rem 1fr; column-gap: 2rem;
   align-items: center; min-height: 5.25rem;
-  animation: fadein .35s ease-out both;
+  animation: fadein .55s var(--ease) both;
+  transition: min-height .45s var(--ease);   /* 실행 중이 되며 커질 때 */
 }
+/* 창 밖으로 나가는 줄. 흐려진 뒤에 떼어낸다 (app.js dropRow, OUT_MS 와 길이를 맞춘다). */
+.st.out { animation: rowout .4s ease-in both; }
 .st .dot {
   width: 2.5rem; height: 2.5rem; border-radius: 50%; border: 2px solid var(--line);
   background: var(--bg); display: flex; align-items: center; justify-content: center;
   font-size: 1.06rem; color: var(--rule); font-variant-numeric: tabular-nums; z-index: 1;
-  transition: background .3s, border-color .3s, color .3s;
+  transition: background .45s, border-color .45s, color .45s, box-shadow .45s;
 }
-.st .tx { font-size: 2.1rem; color: var(--rule); letter-spacing: -.01em; transition: color .3s, font-size .3s; }
+.st .tx { font-size: 2.1rem; color: var(--rule); letter-spacing: -.01em; transition: color .45s, font-size .45s var(--ease); }
 .st.done .dot { background: var(--fg); border-color: var(--fg); color: var(--bg); }
 .st.done .tx { color: var(--muted); }
 .st.run { min-height: 9.4rem; }
@@ -80,7 +95,7 @@ html, body {
 
 .reply {
   margin-top: 1.5rem; padding: 1.5rem 2rem; border: 1px solid var(--line); border-radius: .75rem;
-  font-size: 2.1rem; line-height: 1.35; max-width: 52rem; animation: fadein .35s ease-out both;
+  font-size: 2.1rem; line-height: 1.35; max-width: 52rem; animation: fadein .5s var(--ease) both;
 }
 .reply[data-kind="confirm"] { border-color: var(--caution); }
 .reply[data-kind="confirm"]::before { content: "?"; color: var(--caution); font-weight: 600; margin-right: .6rem; }
@@ -131,10 +146,13 @@ html, body {
 .live i { width: .5rem; height: .5rem; border-radius: 50%; background: var(--rule); }
 .live[data-conn="connected"] i { background: var(--fg); }
 
-@keyframes fadein { from { opacity: 0; transform: translateY(.4rem); } to { opacity: 1; transform: none; } }
+@keyframes fadein { from { opacity: 0; transform: translateY(.5rem); } to { opacity: 1; transform: none; } }
+@keyframes rowout { from { opacity: 1; } to { opacity: 0; transform: translateY(-.4rem); } }
 @keyframes pulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+@keyframes ear { 0%, 100% { height: .28rem; opacity: .5; } 50% { height: .9rem; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
   .st, .reply { animation: none; }
-  .st.think .dot { animation: none; }
-  .st .dot, .st .tx, .now .bar b { transition: none; }
+  .st.out { animation: none; }
+  .st.think .dot, .ear b { animation: none; }
+  .st, .st .dot, .st .tx, .now .bar b { transition: none; }
 }

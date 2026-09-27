@@ -91,6 +91,15 @@
   // 그보다 길면 5줄 창 + 접힘 표시 두 줄로 바꾼다 — 창 위치는 실행 중인 단계를
   // 따라가고, 아직 실행 전이면 막 도착한 줄을 따라간다.
   var FITS = 7, WIN = 5, LEAD = 2;
+  var OUT_MS = 400;                     // style.css .st.out 과 길이를 맞춘다
+
+  // 줄은 바로 떼지 않는다. 흐려진 뒤에 뗀다 — 보이는 채로 사라지면 아래 줄이 튄다.
+  function dropRow(li) {
+    if (!li || li.dataset.out) return;
+    li.dataset.out = "1";
+    li.classList.add("out");
+    setTimeout(function () { li.remove(); }, OUT_MS);
+  }
 
   function spineWindow(n) {
     if (n <= FITS) return [0, n - 1];
@@ -109,7 +118,7 @@
 
   // 접힘 한 줄. 필요 없으면 지운다. 반환값이 곧 다음 호출의 상태다.
   function syncFold(node, show, text, before) {
-    if (!show) { if (node) node.remove(); return null; }
+    if (!show) { dropRow(node); return null; }
     if (!node) {
       node = newRow();
       node.className = "st fold";
@@ -121,8 +130,8 @@
   }
 
   function syncSteps() {
-    if (vm.planId !== spinePlan) {          // 새 계획 = 목록을 비운다
-      el.steps.replaceChildren();
+    if (vm.planId !== spinePlan) {          // 새 계획 = 이전 계획을 흐리며 뗀다
+      Array.prototype.forEach.call(el.steps.children, dropRow);
       liByIdx = Object.create(null);
       thinkLi = foldTop = foldBot = null;
       spinePlan = vm.planId;
@@ -132,7 +141,7 @@
 
     Object.keys(liByIdx).forEach(function (k) {   // 창 밖으로 나간 줄은 뗀다
       var i = +k;
-      if (i < lo || i > hi) { liByIdx[i].remove(); delete liByIdx[i]; }
+      if (i < lo || i > hi) { dropRow(liByIdx[i]); delete liByIdx[i]; }
     });
 
     foldTop = syncFold(foldTop, lo > 0, "이전 " + lo + "단계", el.steps.firstChild);
@@ -167,7 +176,7 @@
       thinkLi.tx.textContent = "생각하는 중\u2026";
       el.steps.appendChild(thinkLi);
     } else if (!vm.thinking && thinkLi) {
-      thinkLi.remove(); thinkLi = null;
+      dropRow(thinkLi); thinkLi = null;
     }
   }
   function render() {
