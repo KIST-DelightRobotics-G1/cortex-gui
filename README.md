@@ -61,10 +61,10 @@ Source of truth: cortex `gui_bridge_node` (SYS-REQ-41). Three message types:
   | `REPLY` | bubble instead of a plan; body `chat|none|confirm` (confirm = Caution border) |
   | `STEP_START` | step becomes the large current one; NOW shows `title` (the spoken sentence) |
   | `STEP_DONE` / `STEP_FAILED` | ✓ filled / ✕ Danger |
-  | `GROUND` | line under NOW (e.g. "냉장고 문 확인됨") |
-  | `CANCEL` | current step marked ✕; note under NOW |
+  | `GROUND` | line under NOW (e.g. "냉장고 문 확인됨"), grey |
+  | `CANCEL` | current step marked ✕; note under NOW, hollow dot; NOW dims |
   | `PLAN_DONE` | NOW "완료" |
-  | `NOTE` | note under NOW |
+  | `NOTE` | `index >= 0`: grey note under NOW. `index < 0` means planning ended with no plan (a blocked or failed `KIND_ERROR`): the thinking dot stops and NOW shows `title` in Caution |
 
   A client that connects late receives the current plan's events replayed, so a
   refreshed page recovers the flow.

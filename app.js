@@ -30,7 +30,7 @@
       mode: "idle",          // idle | planning | running | reply | done | failed | stopped
       planId: "", heard: "", thinking: false, count: -1,
       steps: [],             // [{index, title, status: pending|run|done|failed}]
-      cur: -1, say: "", obs: "", reply: null, stepT0: 0,
+      cur: -1, say: "", obs: "", obsTone: "info", reply: null, stepT0: 0,
     };
   }
 
@@ -59,15 +59,21 @@
       case "STEP_DONE": if (vm.steps[i]) vm.steps[i].status = "done"; return;
       case "STEP_FAILED":
         if (vm.steps[i]) vm.steps[i].status = "failed";
-        vm.mode = "failed"; vm.obs = ev.title; return;
-      case "GROUND": vm.obs = ev.title; return;
+        vm.mode = "failed"; vm.obs = ev.title; vm.obsTone = "fail"; return;
+      case "GROUND": vm.obs = ev.title; vm.obsTone = "info"; return;
       case "CANCEL":
         vm.thinking = false; vm.obs = ev.title;
+        vm.obsTone = vm.mode === "failed" ? "fail" : "stop";
         if (vm.mode !== "failed") vm.mode = "stopped";
         if (vm.steps[vm.cur] && vm.steps[vm.cur].status === "run") vm.steps[vm.cur].status = "failed";
         return;
-      case "PLAN_DONE": vm.mode = "done"; vm.say = "완료"; vm.obs = ""; return;
-      case "NOTE": vm.obs = ev.title; return;
+      case "PLAN_DONE": vm.mode = "done"; vm.say = "완료"; vm.obs = ""; vm.obsTone = "info"; return;
+      case "NOTE":
+        if (ev.index < 0) {                    // 계획 단계가 끝났는데 계획이 없다
+          vm.thinking = false; vm.mode = "blocked";
+          vm.say = ev.title; vm.obs = ""; vm.obsTone = "block";
+        } else { vm.obs = ev.title; vm.obsTone = "info"; }
+        return;
     }
   }
 
@@ -201,6 +207,7 @@
     // now
     el.say.textContent = vm.say || "대기 중";
     el.obs.hidden = !vm.obs; el.obs.lastElementChild.textContent = vm.obs;
+    el.obs.dataset.tone = vm.obsTone;
     var n = vm.count >= 0 ? vm.count : vm.steps.length;
     var done = vm.steps.filter(function (s) { return s && s.status === "done"; }).length;
     el.bar.style.width = n ? Math.round((done / n) * 100) + "%" : "0";
