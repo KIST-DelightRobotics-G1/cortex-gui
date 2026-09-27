@@ -69,7 +69,9 @@
         return;
       case "PLAN_DONE": vm.mode = "done"; vm.say = "완료"; vm.obs = ""; vm.obsTone = "info"; return;
       case "NOTE":
-        if (ev.index < 0) {                    // 계획 단계가 끝났는데 계획이 없다
+        // index < 0 = 계획 단계가 끝났는데 계획이 없다. 단, 실행 중에 들어온 다른
+        // 발화가 막힌 것이면 돌아가는 계획의 화면을 빼앗지 않고 한 줄로만 알린다.
+        if (ev.index < 0 && ev.plan_id === vm.planId) {
           vm.thinking = false; vm.mode = "blocked";
           vm.say = ev.title; vm.obs = ""; vm.obsTone = "block";
         } else { vm.obs = ev.title; vm.obsTone = "info"; }
@@ -185,6 +187,22 @@
       dropRow(thinkLi); thinkLi = null;
     }
   }
+  // NOW 문장은 갈아 끼우지 않고 흐려졌다 나타난다. 한 프레임에 바뀌면 글자가
+  // 튀어 보이고, 두 줄짜리로 바뀔 때는 아래 것들까지 같이 튄다.
+  var SAY_FADE_MS = 200;                  // style.css .now .say 의 transition 과 맞춘다
+  var sayTimer = null, sayWanted = null;
+
+  function setSay(text) {
+    if (sayWanted === text) return;
+    sayWanted = text;
+    el.say.classList.add("swap");
+    clearTimeout(sayTimer);
+    sayTimer = setTimeout(function () {
+      el.say.textContent = sayWanted;
+      el.say.classList.remove("swap");
+    }, SAY_FADE_MS);
+  }
+
   function render() {
     var key = JSON.stringify(vm);
     if (key === lastKey) return;
@@ -205,7 +223,7 @@
     } else { el.reply.hidden = true; }
 
     // now
-    el.say.textContent = vm.say || "대기 중";
+    setSay(vm.say || "대기 중");
     el.obs.hidden = !vm.obs; el.obs.lastElementChild.textContent = vm.obs;
     el.obs.dataset.tone = vm.obsTone;
     var n = vm.count >= 0 ? vm.count : vm.steps.length;

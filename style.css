@@ -106,7 +106,9 @@ html, body {
 .right { display: flex; flex-direction: column; }
 .now { border-top: 1px solid var(--line); padding-top: 1.5rem; }
 .now .say { margin-top: 1.1rem; font-size: 3.6rem; font-weight: 600; letter-spacing: -.02em; line-height: 1.2;
-  text-wrap: balance; word-break: keep-all; }
+  text-wrap: balance; word-break: keep-all;
+  transition: opacity .2s ease, color .45s var(--ease); }
+.now .say.swap { opacity: 0; }
 .wrap[data-mode="idle"] .now .say { color: var(--muted); font-weight: 400; }
 .wrap[data-mode="failed"] .now .say { color: var(--danger); }
 /* 멈춘 화면은 실행 중과 같은 밝기면 안 된다 — 진행이 멎었다는 것이 먼저 읽혀야 한다. */
@@ -167,5 +169,5 @@ html, body {
   .st, .reply { animation: none; }
   .st.out { animation: none; }
   .st.think .dot, .ear b { animation: none; }
-  .st, .st .dot, .st .tx, .now .bar b { transition: none; }
+  .st, .st .dot, .st .tx, .now .bar b, .now .say { transition: none; }
 }
