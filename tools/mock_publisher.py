@@ -10,7 +10,7 @@ made up (nav 6 s, VLA 3 s).
 
 Run:
     pip install websockets pillow      # pillow optional
-    python tools/mock_publisher.py [--scenario cucumber|reply|fail|stop] [--loop]
+    python tools/mock_publisher.py [--scenario cucumber|reply|fail|stop|blocked|long] [--loop]
 Then:
     python3 -m http.server 8080        # in the repo root
     # browser: http://localhost:8080/?ws=ws://localhost:8081
@@ -92,10 +92,39 @@ def script_cucumber(fail_at=None, stop_at=None):
     return ev
 
 
+def script_long():
+    """10단계. 계획 줄이 7개를 넘으면 실행 중인 단계 둘레만 남고 접힌다."""
+    titles = ["냉장고로 이동", "냉장고 문 열기", "오이 꺼내기", "우유 꺼내기",
+              "냉장고 문 닫기", "조리대로 이동", "오이 내려놓기", "우유 내려놓기",
+              "사용자에게 이동", "다 됐다고 알리기"]
+    says = [s.replace("이동", "갑니다").replace("기", "합니다") for s in titles]
+    ev = [(0, "HEARD", -1, "냉장고에서 오이랑 우유 꺼내서 조리대에 놔줘", ""),
+          (0.1, "THINKING", -1, "생각하는 중", "idle")]
+    ev.append((1.3, "PLAN_LINE", 0, titles[0], ""))
+    ev.append((0.05, "STEP_START", 0, says[0], ""))
+    for i in range(1, 10):
+        ev.append((0.2, "PLAN_LINE", i, titles[i], ""))
+    ev.append((0.05, "PLAN_END", 10, "계획 10단계", ""))
+    for i in range(1, 10):
+        ev.append((2.5, "STEP_DONE", i - 1, titles[i - 1], ""))
+        ev.append((0.1, "STEP_START", i, says[i], ""))
+    ev.append((2.5, "STEP_DONE", 9, titles[9], ""))
+    ev.append((0.2, "PLAN_DONE", -1, "완료", ""))
+    return ev
+
+
 SCRIPTS = {
     "cucumber": lambda: script_cucumber(),
     "fail": lambda: script_cucumber(fail_at=1),
     "stop": lambda: script_cucumber(stop_at=2),
+    "long": script_long,
+    # 검증기가 막은 경우. cortex 는 막은 이유를 그대로 말하고 화면에도 같은 문장을 보낸다
+    # (executor.py 의 _error_say). 계획은 한 줄도 나오지 않는다.
+    "blocked": lambda: [
+        (0, "HEARD", -1, "화장실로 가", ""),
+        (0.1, "THINKING", -1, "생각하는 중", "idle"),
+        (1.6, "NOTE", -1, "그곳은 아직 갈 수 없습니다.", "unknown_place|bathroom"),
+    ],
     "reply": lambda: [
         (0, "HEARD", -1, "오리 가져다줘", ""),
         (0.1, "THINKING", -1, "생각하는 중", "idle"),
