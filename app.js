@@ -81,6 +81,47 @@
 
   // ---- DOM ----
   var lastKey = "";
+  // 계획 줄은 제자리에서 고친다. 매번 다시 만들면 새 줄이 올 때마다 기존
+  // 줄까지 fadein 을 다시 시작해 목록 전체가 끊겨 보이고, 갓 만든 요소라
+  // transition 도 걸리지 않아 단계가 커질 때 툭 바뀐다.
+  var spinePlan = null, liByIdx = Object.create(null), thinkLi = null;
+
+  function syncSteps() {
+    if (vm.planId !== spinePlan) {          // 새 계획 = 목록을 비운다
+      el.steps.replaceChildren();
+      liByIdx = Object.create(null); thinkLi = null; spinePlan = vm.planId;
+    }
+    vm.steps.forEach(function (s) {
+      if (!s) return;
+      var li = liByIdx[s.index];
+      if (!li) {                            // 새 줄만 fadein 한다
+        li = document.createElement("li");
+        li.dot = document.createElement("div"); li.dot.className = "dot";
+        li.tx = document.createElement("div"); li.tx.className = "tx";
+        li.appendChild(li.dot); li.appendChild(li.tx);
+        liByIdx[s.index] = li;
+        var at = thinkLi;                   // 순서 유지 (늦게 온 줄도 제자리에)
+        for (var j = s.index + 1; j < vm.steps.length; j++) {
+          if (liByIdx[j]) { at = liByIdx[j]; break; }
+        }
+        el.steps.insertBefore(li, at);
+      }
+      var cls = "st " + s.status;
+      if (li.className !== cls) li.className = cls;   // 여기서 transition 이 돈다
+      var mark = s.status === "done" ? "\u2713" : s.status === "failed" ? "\u2715"
+                                                 : String(s.index + 1);
+      if (li.dot.textContent !== mark) li.dot.textContent = mark;
+      if (li.tx.textContent !== s.title) li.tx.textContent = s.title;
+    });
+    if (vm.thinking && !thinkLi) {
+      thinkLi = document.createElement("li");
+      thinkLi.className = "st think";
+      thinkLi.innerHTML = '<div class="dot">\u00b7</div><div class="tx">생각하는 중\u2026</div>';
+      el.steps.appendChild(thinkLi);
+    } else if (!vm.thinking && thinkLi) {
+      thinkLi.remove(); thinkLi = null;
+    }
+  }
   function render() {
     var key = JSON.stringify(vm);
     if (key === lastKey) return;
@@ -91,22 +132,7 @@
     el.heard.classList.toggle("quote", !!vm.heard);
 
     // plan spine
-    var frag = document.createDocumentFragment();
-    vm.steps.forEach(function (s) {
-      if (!s) return;
-      var li = document.createElement("li");
-      li.className = "st " + s.status;
-      var dot = document.createElement("div"); dot.className = "dot";
-      dot.textContent = s.status === "done" ? "✓" : s.status === "failed" ? "✕" : String(s.index + 1);
-      var tx = document.createElement("div"); tx.className = "tx"; tx.textContent = s.title;
-      li.appendChild(dot); li.appendChild(tx); frag.appendChild(li);
-    });
-    if (vm.thinking) {
-      var li = document.createElement("li"); li.className = "st think";
-      li.innerHTML = '<div class="dot">·</div><div class="tx">생각하는 중…</div>';
-      frag.appendChild(li);
-    }
-    el.steps.replaceChildren(frag);
+    syncSteps();
     el.planLab.textContent = vm.count >= 0 ? "Plan · " + vm.count : vm.thinking ? "Plan" : vm.steps.length ? "Plan" : "";
     el.planLab.hidden = !vm.steps.length && !vm.thinking && !vm.reply;
 

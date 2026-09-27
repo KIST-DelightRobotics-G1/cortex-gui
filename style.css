@@ -17,8 +17,10 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 [hidden] { display: none !important; }
-/* 1rem = 16px at 1920 wide; everything scales with the wall display. */
-html { font-size: calc(100vw / 120); }
+/* 1rem = 16px at 1920x1080; everything scales with the wall display.
+   둘 중 작은 쪽을 쓴다 — 가로만 보면 창이 낮을 때 계획 줄이 아래 마크를
+   침범한다 (1920x900 에서 15px 겹침). 1920x1080 에서는 양쪽 다 16px. */
+html { font-size: min(calc(100vw / 120), calc(100vh / 67.5)); }
 html, body {
   width: 100%; height: 100%; background: var(--bg); color: var(--fg); overflow: hidden;
   font-family: "Pretendard", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
