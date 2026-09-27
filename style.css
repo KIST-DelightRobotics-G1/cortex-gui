@@ -73,6 +73,10 @@ html, body {
 .st.failed .tx { color: var(--danger); }
 .st.think .dot { border-style: dashed; border-color: var(--rule); animation: pulse 1.2s ease-in-out infinite; }
 .st.think .tx { font-size: 1.6rem; color: var(--muted); }
+/* 창 밖으로 접힌 단계. 7줄까지만 화면에 들어가므로 그보다 길면 이 줄로 줄인다. */
+.st.fold { min-height: 3.25rem; }
+.st.fold .dot { border-style: dotted; font-size: 1.1rem; }
+.st.fold .tx { font-size: 1.3rem; color: var(--rule); }
 
 .reply {
   margin-top: 1.5rem; padding: 1.5rem 2rem; border: 1px solid var(--line); border-radius: .75rem;

@@ -85,23 +85,66 @@
   // 줄까지 fadein 을 다시 시작해 목록 전체가 끊겨 보이고, 갓 만든 요소라
   // transition 도 걸리지 않아 단계가 커질 때 툭 바뀐다.
   var spinePlan = null, liByIdx = Object.create(null), thinkLi = null;
+  var foldTop = null, foldBot = null;
+
+  // 1920x1080 에 들어가는 줄은 7개(실행 중 한 줄이 9.4rem, 나머지 5.25rem).
+  // 그보다 길면 5줄 창 + 접힘 표시 두 줄로 바꾼다 — 창 위치는 실행 중인 단계를
+  // 따라가고, 아직 실행 전이면 막 도착한 줄을 따라간다.
+  var FITS = 7, WIN = 5, LEAD = 2;
+
+  function spineWindow(n) {
+    if (n <= FITS) return [0, n - 1];
+    var anchor = vm.cur >= 0 ? vm.cur : n - 1;
+    var start = Math.min(Math.max(anchor - LEAD, 0), n - WIN);
+    return [start, start + WIN - 1];
+  }
+
+  function newRow() {
+    var li = document.createElement("li");
+    li.dot = document.createElement("div"); li.dot.className = "dot";
+    li.tx = document.createElement("div"); li.tx.className = "tx";
+    li.appendChild(li.dot); li.appendChild(li.tx);
+    return li;
+  }
+
+  // 접힘 한 줄. 필요 없으면 지운다. 반환값이 곧 다음 호출의 상태다.
+  function syncFold(node, show, text, before) {
+    if (!show) { if (node) node.remove(); return null; }
+    if (!node) {
+      node = newRow();
+      node.className = "st fold";
+      node.dot.textContent = "\u22ef";
+      el.steps.insertBefore(node, before);
+    }
+    if (node.tx.textContent !== text) node.tx.textContent = text;
+    return node;
+  }
 
   function syncSteps() {
     if (vm.planId !== spinePlan) {          // 새 계획 = 목록을 비운다
       el.steps.replaceChildren();
-      liByIdx = Object.create(null); thinkLi = null; spinePlan = vm.planId;
+      liByIdx = Object.create(null);
+      thinkLi = foldTop = foldBot = null;
+      spinePlan = vm.planId;
     }
+    var n = vm.steps.length;
+    var w = spineWindow(n), lo = w[0], hi = w[1];
+
+    Object.keys(liByIdx).forEach(function (k) {   // 창 밖으로 나간 줄은 뗀다
+      var i = +k;
+      if (i < lo || i > hi) { liByIdx[i].remove(); delete liByIdx[i]; }
+    });
+
+    foldTop = syncFold(foldTop, lo > 0, "이전 " + lo + "단계", el.steps.firstChild);
+
     vm.steps.forEach(function (s) {
-      if (!s) return;
+      if (!s || s.index < lo || s.index > hi) return;
       var li = liByIdx[s.index];
-      if (!li) {                            // 새 줄만 fadein 한다
-        li = document.createElement("li");
-        li.dot = document.createElement("div"); li.dot.className = "dot";
-        li.tx = document.createElement("div"); li.tx.className = "tx";
-        li.appendChild(li.dot); li.appendChild(li.tx);
+      if (!li) {                            // 새로 들어온 줄만 fadein 한다
+        li = newRow();
         liByIdx[s.index] = li;
-        var at = thinkLi;                   // 순서 유지 (늦게 온 줄도 제자리에)
-        for (var j = s.index + 1; j < vm.steps.length; j++) {
+        var at = foldBot || thinkLi;        // 순서 유지 (늦게 온 줄도 제자리에)
+        for (var j = s.index + 1; j <= hi; j++) {
           if (liByIdx[j]) { at = liByIdx[j]; break; }
         }
         el.steps.insertBefore(li, at);
@@ -113,10 +156,15 @@
       if (li.dot.textContent !== mark) li.dot.textContent = mark;
       if (li.tx.textContent !== s.title) li.tx.textContent = s.title;
     });
+
+    var rest = vm.count >= 0 ? vm.count - 1 - hi : n - 1 - hi;
+    foldBot = syncFold(foldBot, rest > 0, "이후 " + rest + "단계", thinkLi);
+
     if (vm.thinking && !thinkLi) {
-      thinkLi = document.createElement("li");
+      thinkLi = newRow();
       thinkLi.className = "st think";
-      thinkLi.innerHTML = '<div class="dot">\u00b7</div><div class="tx">생각하는 중\u2026</div>';
+      thinkLi.dot.textContent = "\u00b7";
+      thinkLi.tx.textContent = "생각하는 중\u2026";
       el.steps.appendChild(thinkLi);
     } else if (!vm.thinking && thinkLi) {
       thinkLi.remove(); thinkLi = null;

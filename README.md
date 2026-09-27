@@ -56,7 +56,7 @@ Source of truth: cortex `gui_bridge_node` (SYS-REQ-41). Three message types:
   |---|---|
   | `HEARD` | new plan: HEARD shows the utterance, plan cleared, "생각하는 중" (body `stop` = a stop word: shown as a note only) |
   | `THINKING` | dashed "thinking" dot at the end of PLAN |
-  | `PLAN_LINE` | step `index` appears (fade-in) — arrives while the LLM streams |
+  | `PLAN_LINE` | step `index` appears (fade-in) — arrives while the LLM streams. Over 7 steps, the spine keeps a 5-step window around the current one and folds the rest into `이전 N단계` / `이후 N단계` rows |
   | `PLAN_END` | thinking dot removed; `Plan · N` |
   | `REPLY` | bubble instead of a plan; body `chat|none|confirm` (confirm = Caution border) |
   | `STEP_START` | step becomes the large current one; NOW shows `title` (the spoken sentence) |
