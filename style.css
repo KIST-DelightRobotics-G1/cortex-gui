@@ -31,7 +31,7 @@ html, body {
 }
 
 .wrap {
-  position: absolute; inset: 0; padding: 4.5rem 6rem 4rem;
+  position: absolute; inset: 0; padding: 8rem 6rem 4rem;
   display: grid; grid-template-columns: 1fr 37.5rem; column-gap: 7.5rem;
 }
 
@@ -105,6 +105,16 @@ html, body {
   font-size: 1rem; letter-spacing: .18em; color: var(--rule);
 }
 .cam.has-frame .nosig { display: none; }
+
+/* ---- brand ---- */
+/* 화면의 주인. 섹션 라벨(HEARD / PLAN)보다 크고 fg 색이라 또 하나의 절 제목으로
+   읽히지 않는다. SAFETY NODE 는 좌하단 그대로 — 위는 시연의 주인, 아래는 만든 쪽.
+   팔레트 규칙대로 색은 쓰지 않는다 (색은 실패 · 되묻기 전용). */
+.lablogo {
+  position: absolute; top: 3rem; left: 6rem;
+  font-size: 1.25rem; font-weight: 600; letter-spacing: .22em; text-transform: uppercase;
+  color: var(--fg); white-space: nowrap;
+}
 
 /* ---- corners ---- */
 .mark, .live {

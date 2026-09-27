@@ -70,7 +70,9 @@ Source of truth: cortex `gui_bridge_node` (SYS-REQ-41). Three message types:
   refreshed page recovers the flow.
 
 Design: `Safety Node` brand palette v2 (monochrome dark tokens); hue only for a
-failed step (Danger) or a confirm question (Caution). Sub-headings are English
+failed step (Danger) or a confirm question (Caution). Top-left carries the lab
+name (whose demo this is), bottom-left the Safety Node mark (who built it) —
+separated by position and size, not colour. Sub-headings are English
 (HEARD / PLAN / NOW / CAMERA); content is Korean. Layout scales with the
 viewport (`1rem = 1/120 vw`), designed at 1920×1080.
 
@@ -78,7 +80,7 @@ viewport (`1rem = 1/120 vw`), designed at 1920×1080.
 
 | File | Role |
 |------|------|
-| `index.html` | DOM layout: HEARD / PLAN / NOW / CAMERA + corner marks |
+| `index.html` | DOM layout: lab name + HEARD / PLAN / NOW / CAMERA + corner marks |
 | `app.js` | WS client + reconnect + event reducer + DOM patching + camera canvas |
 | `config.js` | WS URL (`?ws=` override) |
 | `style.css` | fullscreen layout |
