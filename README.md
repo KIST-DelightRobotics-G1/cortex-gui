@@ -54,15 +54,15 @@ Source of truth: cortex `gui_bridge_node` (SYS-REQ-41). Three message types:
 
   | kind | screen effect |
   |---|---|
-  | `HEARD` | new plan: HEARD shows the utterance, plan cleared, "생각하는 중" (body `stop` = a stop word: shown as a note only) |
+  | `HEARD` | new plan: HEARD shows the utterance, plan cleared, "생각하는 중" (body `stop` = a stop word: kept, and prefixed to the following `CANCEL` line) |
   | `THINKING` | dashed "thinking" dot at the end of PLAN |
   | `PLAN_LINE` | step `index` appears (fade-in) — arrives while the LLM streams. Over 7 steps, the spine keeps a 5-step window around the current one and folds the rest into `이전 N단계` / `이후 N단계` rows |
   | `PLAN_END` | thinking dot removed; `Plan · N` |
   | `REPLY` | bubble instead of a plan; body `chat|none|confirm` (confirm = Caution border) |
   | `STEP_START` | step becomes the large current one; NOW shows `title` (the spoken sentence) |
-  | `STEP_DONE` / `STEP_FAILED` | ✓ filled / ✕ Danger |
+  | `STEP_DONE` / `STEP_FAILED` | ✓ filled / ✕ Danger. On failure NOW reads "<step> 실패" in Danger; `title` (the module's English reason) is not shown |
   | `GROUND` | line under NOW (e.g. "냉장고 문 확인됨"), grey |
-  | `CANCEL` | current step marked ✕; note under NOW, hollow dot; NOW dims |
+  | `CANCEL` | current step marked ✕; note under NOW, hollow dot; NOW dims. After a stop word: note is `“그만” · <title>`, NOW "멈춥니다" |
   | `PLAN_DONE` | NOW "완료" |
   | `NOTE` | `index >= 0`: grey note under NOW. `index < 0` means planning ended with no plan (a blocked or failed `KIND_ERROR`): the thinking dot stops and NOW shows `title` in Caution |
 

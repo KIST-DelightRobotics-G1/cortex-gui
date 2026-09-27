@@ -31,6 +31,7 @@
       planId: "", heard: "", thinking: false, count: -1,
       steps: [],             // [{index, title, status: pending|run|done|failed}]
       cur: -1, say: "", obs: "", obsTone: "info", reply: null, stepT0: 0,
+      stopWord: "",          // "그만" 등 — 무엇을 듣고 멈췄는지
     };
   }
 
@@ -38,7 +39,10 @@
     var k = ev.kind, i = ev.index;
     switch (k) {
       case "HEARD":
-        if (ev.body === "stop") { vm.obs = "“" + ev.title + "”"; return; }
+        if (ev.body === "stop") {
+          vm.stopWord = ev.title; vm.obs = "“" + ev.title + "”"; vm.obsTone = "stop";
+          return;
+        }
         vm = fresh();
         vm.mode = "planning"; vm.planId = ev.plan_id; vm.heard = ev.title; vm.thinking = true;
         vm.say = "생각하는 중"; vm.stepT0 = performance.now();
@@ -59,10 +63,23 @@
       case "STEP_DONE": if (vm.steps[i]) vm.steps[i].status = "done"; return;
       case "STEP_FAILED":
         if (vm.steps[i]) vm.steps[i].status = "failed";
-        vm.mode = "failed"; vm.obs = ev.title; vm.obsTone = "fail"; return;
+        // 멈춤 요청 뒤 VLA 가 안전 지점에서 멈춘 것 — 실패가 아니라 멈춤의 끝이다
+        if (ev.body === "cancelled_at_safe_point") return;
+        // 실패 사유(ev.title)는 모듈이 주는 영어(timeout, module lost ...)라 올리지 않는다.
+        // 로봇이 사유를 말로 알리고, 화면은 어느 단계가 실패했는지를 크게 보인다.
+        vm.mode = "failed";
+        vm.say = (vm.steps[i] ? vm.steps[i].title : "동작") + " 실패";
+        vm.obs = ""; vm.obsTone = "fail";
+        return;
       case "GROUND": vm.obs = ev.title; vm.obsTone = "info"; return;
       case "CANCEL":
-        vm.thinking = false; vm.obs = ev.title;
+        vm.thinking = false;
+        if (vm.stopWord) {                   // 사용자가 멈추라고 했다 — 들은 말을 남긴다
+          vm.obs = "“" + vm.stopWord + "” · " + ev.title;
+          vm.say = "멈춥니다";              // 로봇이 하는 말 (actions.yaml phrases.stopped)
+        } else {
+          vm.obs = ev.title;
+        }
         vm.obsTone = vm.mode === "failed" ? "fail" : "stop";
         if (vm.mode !== "failed") vm.mode = "stopped";
         if (vm.steps[vm.cur] && vm.steps[vm.cur].status === "run") vm.steps[vm.cur].status = "failed";
