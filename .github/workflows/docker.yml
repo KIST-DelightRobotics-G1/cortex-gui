@@ -1,0 +1,33 @@
+name: Docker
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  image:
+    name: image (build + smoke)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -f docker/Dockerfile -t kist-cortex-gui .
+
+      # The page is served, and the mock publisher starts and answers on :8081.
+      - name: Smoke
+        run: |
+          docker run -d --name gui --network host kist-cortex-gui
+          docker exec -d gui python tools/mock_publisher.py --scenario cucumber --loop --delay 0
+          sleep 4
+          curl -fsS http://localhost:8080/ | grep -q 'app.js'
+          curl -fsS http://localhost:8080/app.js > /dev/null
+          docker exec gui python -c "
+          import asyncio, websockets
+          async def main():
+              async with websockets.connect('ws://localhost:8081') as ws:
+                  print('first message:', str(await asyncio.wait_for(ws.recv(), 10))[:80])
+          asyncio.run(main())"
+          docker rm -f gui
