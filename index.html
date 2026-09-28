@@ -7,7 +7,46 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <canvas id="view"></canvas>
+    <div class="lablogo">Delight Robotics Lab</div>
+
+    <main class="wrap" id="wrap" data-mode="idle">
+      <section class="left">
+        <div class="heard">
+          <div class="lab">Heard<i class="ear" aria-hidden="true"><b></b><b></b><b></b></i></div>
+          <div class="q" id="heard">듣고 있습니다</div>
+        </div>
+        <div class="lab" id="planLab">Plan</div>
+        <ol class="steps" id="steps"></ol>
+        <div class="reply" id="reply" hidden></div>
+      </section>
+
+      <section class="right">
+        <div class="now">
+          <div class="lab">Now</div>
+          <div class="say" id="say">대기 중</div>
+          <div class="obs" id="obs" hidden><i></i><span></span></div>
+          <div class="bar"><b id="bar"></b></div>
+          <div class="meta"><span id="stepNo"></span><span id="elapsed"></span></div>
+        </div>
+        <div class="cam" id="cam">
+          <div class="lab">Camera</div>
+          <div class="box"><canvas id="view"></canvas><span class="nosig" id="nosig">NO SIGNAL</span></div>
+        </div>
+      </section>
+    </main>
+
+    <div class="mark" aria-label="Safety Node">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <path d="M7.8 6.9 16.2 11.1"/><path d="M7.8 17.1 16.2 12.9"/>
+          <circle cx="5" cy="6" r="2.8" fill="currentColor" stroke="none"/>
+          <circle cx="5" cy="18" r="2.8" fill="currentColor" stroke="none"/>
+          <circle cx="19" cy="12" r="2.8" fill="currentColor" stroke="none"/>
+        </g>
+      </svg><span>SAFETY NODE</span>
+    </div>
+    <div class="live" id="live" data-conn="connecting"><i></i><span>CONNECTING</span></div>
+
     <script src="config.js"></script>
     <script src="app.js"></script>
   </body>
