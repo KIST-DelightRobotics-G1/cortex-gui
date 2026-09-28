@@ -25,13 +25,24 @@ Default WS URL is `ws://<page-host>:8081`; override with the `?ws=` query param.
 
 ```bash
 pip install websockets pillow
-python tools/mock_publisher.py        # fake publisher on ws://localhost:8081
+python3 tools/mock_publisher.py        # fake publisher on ws://localhost:8081
 # then: python3 -m http.server 8080  and open  http://localhost:8080/?ws=ws://localhost:8081
 ```
 
-`--scenario cucumber|reply|fail|stop` picks a scripted thought flow (`--loop`
+`--scenario cucumber|reply|fail|stop|blocked|long` picks a scripted thought flow (`--loop`
 repeats it, `--delay` gives you time to open the page first). Planning-phase
 timings follow the 3rd measurement round (first subtask 1.4 s).
+
+### Docker
+
+The renderer has its own container (cortex runs in another one and serves `:8081`).
+
+```bash
+docker/build.sh                               # image: kist-cortex-gui
+docker/run.sh                                 # serve on :8080, restarts after reboot
+# open: http://localhost:8080/?ws=ws://<workstation-ip>:8081
+docker/run.sh mock --scenario fail --loop     # fake publisher on :8081, no cortex needed
+```
 
 ## WebSocket message contract
 
