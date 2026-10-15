@@ -32,36 +32,63 @@
       steps: [],             // [{index, title, status: pending|run|done|failed}]
       cur: -1, say: "", obs: "", obsTone: "info", reply: null, stepT0: 0,
       stopWord: "",          // "그만" 등 — 무엇을 듣고 멈췄는지
+      side: null,            // 계획 실행 중에 들어온 다른 발화 {planId, heard} — LLM 답을 기다린다
     };
   }
 
+  // 계획이 화면에 있고 아직 끝나지 않았다. 이때 들어온 새 발화는 로봇도 계획을 멈추지 않는다:
+  // 잡담이면 대답만 하고 계속, 새 명령이면 그 계획의 첫 줄이 와야 선점한다 (cortex executor).
+  // 화면도 같은 시점에 바뀐다 — 발화를 들은 순간이 아니라 새 계획 첫 줄이 온 순간에.
+  function busy() {
+    return vm.steps.length > 0 && (vm.mode === "running" || vm.mode === "planning");
+  }
+  function quoted(text) { return "“" + text + "”"; }
+
   function reduce(ev) {
     var k = ev.kind, i = ev.index;
+    // 지금 화면의 계획이 아닌 plan_id: 실행 중에 들어온 발화(side)이거나 이미 넘어간 계획의 잔여 이벤트
+    var other = !!(vm.planId && ev.plan_id && ev.plan_id !== vm.planId);
     switch (k) {
       case "HEARD":
         if (ev.body === "stop") {
-          vm.stopWord = ev.title; vm.obs = "“" + ev.title + "”"; vm.obsTone = "stop";
+          vm.stopWord = ev.title; vm.obs = quoted(ev.title); vm.obsTone = "stop";
+          return;
+        }
+        if (busy()) {                          // 계획은 그대로 두고 한 줄로만 알린다
+          vm.side = { planId: ev.plan_id, heard: ev.title };
+          vm.obs = quoted(ev.title) + " · 생각하는 중"; vm.obsTone = "info";
           return;
         }
         vm = fresh();
         vm.mode = "planning"; vm.planId = ev.plan_id; vm.heard = ev.title; vm.thinking = true;
         vm.say = "생각하는 중"; vm.stepT0 = performance.now();
         return;
-      case "THINKING": vm.thinking = true; return;
+      case "THINKING": if (!other) vm.thinking = true; return;
       case "PLAN_LINE":
-        if (ev.plan_id !== vm.planId) { vm = fresh(); vm.planId = ev.plan_id; vm.mode = "planning"; }
+        if (ev.plan_id !== vm.planId) {        // 새 계획이 실제로 시작됐다 (선점 포함)
+          var heard = vm.side && vm.side.planId === ev.plan_id ? vm.side.heard : "";
+          vm = fresh(); vm.planId = ev.plan_id; vm.mode = "planning"; vm.heard = heard;
+          vm.stepT0 = performance.now();
+        }
         vm.steps[i] = { index: i, title: ev.title, status: "pending" };
         return;
-      case "PLAN_END": vm.thinking = false; vm.count = i; return;
+      case "PLAN_END": if (!other) { vm.thinking = false; vm.count = i; } return;
       case "REPLY":
+        if (other) {                           // 실행 중 잡담 — 계획은 계속된다
+          vm.obs = (vm.side ? quoted(vm.side.heard) + " · " : "") + ev.title; vm.obsTone = "info";
+          vm.side = null;
+          return;
+        }
         vm.thinking = false; vm.mode = "reply"; vm.reply = { kind: ev.body, say: ev.title };
         vm.say = ev.title; return;
       case "STEP_START":
+        if (other) return;
         vm.mode = "running"; vm.cur = i; vm.say = ev.title; vm.obs = ""; vm.stepT0 = performance.now();
         if (vm.steps[i]) vm.steps[i].status = "run";
         return;
-      case "STEP_DONE": if (vm.steps[i]) vm.steps[i].status = "done"; return;
+      case "STEP_DONE": if (!other && vm.steps[i]) vm.steps[i].status = "done"; return;
       case "STEP_FAILED":
+        if (other) return;
         if (vm.steps[i]) vm.steps[i].status = "failed";
         // 멈춤 요청 뒤 VLA 가 안전 지점에서 멈춘 것 — 실패가 아니라 멈춤의 끝이다
         if (ev.body === "cancelled_at_safe_point") return;
@@ -71,8 +98,9 @@
         vm.say = (vm.steps[i] ? vm.steps[i].title : "동작") + " 실패";
         vm.obs = ""; vm.obsTone = "fail";
         return;
-      case "GROUND": vm.obs = ev.title; vm.obsTone = "info"; return;
+      case "GROUND": if (!other) { vm.obs = ev.title; vm.obsTone = "info"; } return;
       case "CANCEL":
+        if (other) { vm.obs = ev.title; vm.obsTone = "info"; return; }   // 다른 발화 쪽의 취소
         vm.thinking = false;
         if (vm.stopWord) {                   // 사용자가 멈추라고 했다 — 들은 말을 남긴다
           vm.obs = "“" + vm.stopWord + "” · " + ev.title;
@@ -84,14 +112,20 @@
         if (vm.mode !== "failed") vm.mode = "stopped";
         if (vm.steps[vm.cur] && vm.steps[vm.cur].status === "run") vm.steps[vm.cur].status = "failed";
         return;
-      case "PLAN_DONE": vm.mode = "done"; vm.say = "완료"; vm.obs = ""; vm.obsTone = "info"; return;
+      case "PLAN_DONE":
+        if (!other) { vm.mode = "done"; vm.say = "완료"; vm.obs = ""; vm.obsTone = "info"; }
+        return;
       case "NOTE":
         // index < 0 = 계획 단계가 끝났는데 계획이 없다. 단, 실행 중에 들어온 다른
         // 발화가 막힌 것이면 돌아가는 계획의 화면을 빼앗지 않고 한 줄로만 알린다.
         if (ev.index < 0 && ev.plan_id === vm.planId) {
           vm.thinking = false; vm.mode = "blocked";
           vm.say = ev.title; vm.obs = ""; vm.obsTone = "block";
-        } else { vm.obs = ev.title; vm.obsTone = "info"; }
+        } else {
+          var who = vm.side && vm.side.planId === ev.plan_id ? quoted(vm.side.heard) + " · " : "";
+          vm.obs = who + ev.title; vm.obsTone = "info";
+          if (who) vm.side = null;
+        }
         return;
     }
   }

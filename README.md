@@ -29,7 +29,9 @@ python3 tools/mock_publisher.py        # fake publisher on ws://localhost:8081
 # then: python3 -m http.server 8080  and open  http://localhost:8080/?ws=ws://localhost:8081
 ```
 
-`--scenario cucumber|reply|fail|stop|blocked|long` picks a scripted thought flow (`--loop`
+`--scenario cucumber|reply|fail|stop|blocked|long|chat|preempt` picks a scripted thought flow
+(`chat`: small talk and a blocked command while the plan runs; `preempt`: a new command
+takes over mid-plan) (`--loop`
 repeats it, `--delay` gives you time to open the page first). Planning-phase
 timings follow the 3rd measurement round (first subtask 1.4 s).
 
@@ -65,11 +67,11 @@ Source of truth: cortex `gui_bridge_node` (SYS-REQ-41). Three message types:
 
   | kind | screen effect |
   |---|---|
-  | `HEARD` | new plan: HEARD shows the utterance, plan cleared, "생각하는 중" (body `stop` = a stop word: kept, and prefixed to the following `CANCEL` line) |
+  | `HEARD` | new plan: HEARD shows the utterance, plan cleared, "생각하는 중" (body `stop` = a stop word: kept, and prefixed to the following `CANCEL` line). **While a plan is running** the plan stays: the utterance is a note under NOW (`“…” · 생각하는 중`) until its answer — the robot keeps working too, and only a new plan's first `PLAN_LINE` replaces the screen |
   | `THINKING` | dashed "thinking" dot at the end of PLAN |
   | `PLAN_LINE` | step `index` appears (fade-in) — arrives while the LLM streams. Over 7 steps, the spine keeps a 5-step window around the current one and folds the rest into `이전 N단계` / `이후 N단계` rows |
   | `PLAN_END` | thinking dot removed; `Plan · N` |
-  | `REPLY` | bubble instead of a plan; body `chat|none|confirm` (confirm = Caution border) |
+  | `REPLY` | bubble instead of a plan; body `chat|none|confirm` (confirm = Caution border). For an utterance heard while a plan runs: note `“…” · <reply>` under NOW, plan unchanged |
   | `STEP_START` | step becomes the large current one; NOW shows `title` (the spoken sentence) |
   | `STEP_DONE` / `STEP_FAILED` | ✓ filled / ✕ Danger. On failure NOW reads "<step> 실패" in Danger; `title` (the module's English reason) is not shown |
   | `GROUND` | line under NOW (e.g. "냉장고 문 확인됨"), grey |
@@ -77,8 +79,10 @@ Source of truth: cortex `gui_bridge_node` (SYS-REQ-41). Three message types:
   | `PLAN_DONE` | NOW "완료" |
   | `NOTE` | `index >= 0`: grey note under NOW. `index < 0` means planning ended with no plan (a blocked or failed `KIND_ERROR`): the thinking dot stops and NOW shows `title` in Caution |
 
-  A client that connects late receives the current plan's events replayed, so a
-  refreshed page recovers the flow.
+  Events whose `plan_id` is not the plan on screen never touch it (only `PLAN_LINE`
+  of a new plan does). A client that connects late receives the events from the
+  newest utterance that became a plan onwards, so a refreshed page recovers the
+  flow even after small talk in between. The camera is shown in colour.
 
 Design: `Safety Node` brand palette v2 (monochrome dark tokens); hue only for a
 failed step (Danger) or a confirm question (Caution). Top-left carries the lab
