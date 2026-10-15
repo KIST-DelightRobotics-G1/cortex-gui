@@ -10,7 +10,7 @@ made up (nav 6 s, VLA 3 s).
 
 Run:
     pip install websockets pillow      # pillow optional
-    python tools/mock_publisher.py [--scenario cucumber|reply|fail|stop|blocked|long] [--loop]
+    python tools/mock_publisher.py [--scenario cucumber|reply|fail|stop|blocked|long|chat|preempt] [--loop]
 Then:
     python3 -m http.server 8080        # in the repo root
     # browser: http://localhost:8080/?ws=ws://localhost:8081
@@ -92,6 +92,34 @@ def script_cucumber(fail_at=None, stop_at=None):
     return ev
 
 
+def script_side(kind):
+    """실행 중에 다른 발화가 들어온다. 6번째 값 "side" = 그 발화의 plan_id 로 나가는 이벤트.
+
+    chat    — 잡담과 막힌 명령: 로봇은 대답만 하고 계획을 계속한다 (화면도 계획 유지)
+    preempt — 새 명령: 첫 줄이 오면 지금 단계를 취소하고 새 계획으로 넘어간다
+    """
+    ev = script_cucumber()
+    at = next(n for n, e in enumerate(ev) if e[1] == "STEP_START" and e[2] == 2) + 1
+    if kind == "chat":
+        side = [(1.0, "HEARD", -1, "지금 뭐 하고 있어?", "", "side"),
+                (0.1, "THINKING", -1, "생각하는 중", "running:pick", "side"),
+                (1.2, "REPLY", -1, "오이를 가지러 가는 중입니다.", "chat", "side"),
+                (2.0, "HEARD", -1, "화장실로 가", "", "side2"),
+                (0.1, "THINKING", -1, "생각하는 중", "running:pick", "side2"),
+                (1.5, "NOTE", -1, "그곳은 아직 갈 수 없습니다.", "unknown_place|bathroom", "side2")]
+        return ev[:at] + side + ev[at:]
+    return ev[:at] + [
+        (1.0, "HEARD", -1, "그냥 테이블로 가", "", "side"),
+        (0.1, "THINKING", -1, "생각하는 중", "running:pick", "side"),
+        (1.4, "CANCEL", 2, "동작 취소", "preempted by new command"),
+        (1.0, "PLAN_LINE", 0, "테이블로 이동", "", "side"),
+        (0.05, "PLAN_END", 1, "계획 1단계", "", "side"),
+        (0.05, "STEP_START", 0, "테이블로 갑니다", "", "side"),
+        (6.0, "STEP_DONE", 0, "테이블로 이동", "", "side"),
+        (0.2, "PLAN_DONE", -1, "완료", "", "side"),
+    ]
+
+
 def script_long():
     """10단계. 계획 줄이 7개를 넘으면 실행 중인 단계 둘레만 남고 접힌다."""
     titles = ["냉장고로 이동", "냉장고 문 열기", "오이 꺼내기", "우유 꺼내기",
@@ -120,6 +148,8 @@ SCRIPTS = {
     "fail": lambda: script_cucumber(fail_at=1),
     "stop": lambda: script_cucumber(stop_at=2),
     "long": script_long,
+    "chat": lambda: script_side("chat"),
+    "preempt": lambda: script_side("preempt"),
     # 검증기가 막은 경우. cortex 는 막은 이유를 그대로 말하고 화면에도 같은 문장을 보낸다
     # (executor.py 의 _error_say). 계획은 한 줄도 나오지 않는다.
     "blocked": lambda: [
@@ -179,12 +209,13 @@ async def _events(script_name: str, loop: bool, delay: float):
         plan_seq += 1
         pid = f"p-mock-{plan_seq:04d}"
         _history.clear()
-        for delay, kind, index, title, body in SCRIPTS[script_name]():
+        for delay, kind, index, title, body, *who in SCRIPTS[script_name]():
             await asyncio.sleep(delay)
-            ev = json.dumps({"type": "event", "t": time.time(), "plan_id": pid, "kind": kind,
+            ev_pid = f"{pid}-{who[0]}" if who else pid
+            ev = json.dumps({"type": "event", "t": time.time(), "plan_id": ev_pid, "kind": kind,
                              "index": index, "title": title, "body": body}, ensure_ascii=False)
-            if kind == "HEARD" and body != "stop":
-                _history.clear()
+            # 늦게 붙은 화면용 기록은 이 스크립트 전체 — 실행 중 들어온 발화가 계획을 지우면 안 된다
+            # (cortex gui_bridge 는 마지막으로 계획이 된 발화부터 다시 보낸다)
             _history.append(ev)
             _status.update(scenario=title if kind == "HEARD" else _status["scenario"],
                            state="active" if kind == "STEP_START" else _status["state"])
